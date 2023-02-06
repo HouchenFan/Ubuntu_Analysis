@@ -1,0 +1,83 @@
+Index: ReadPhsp.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ReadPhsp.py b/ReadPhsp.py
+--- a/ReadPhsp.py	
++++ b/ReadPhsp.py	(date 1662695019154)
+@@ -14,6 +14,7 @@
+ import os
+ import scipy.interpolate as spi
+ import binascii
++import threading  #add by FHC 2022/9/9
+ 
+ 
+ def Cut(data, start, width):
+@@ -190,7 +191,7 @@
+                 W_temp = (1 - U ** 2 - V ** 2)
+                 if particle_type == b'\x01' and abs(W_temp) > 1e-07:
+                     p = PhspVector(i + startID, LATCH, Energy, X, Y, U, V, WT, particle_type, Z)   # particle_type add by FHC 2022/9/2
+-                # if p.Charge in ptypebin and p.SecondaryParticle in In_SecondaryParticle and p.InteractiveRegion in In_InteractiveRegion:
++                    # if p.Charge in ptypebin and p.SecondaryParticle in In_SecondaryParticle and p.InteractiveRegion in In_InteractiveRegion:
+                     print("Particle Type: ", particle_type)
+                     p.Show()
+                     if (p.Charge in ptypebin) and (p.W > 0):
+@@ -220,6 +221,14 @@
+                 p.Show()
+         return pNum
+ 
++    def ThreadLoop(self, phspList,MAXBuffer, ptype, i):
++        Lock = threading.Lock()
++        # 并行模块 开始
++        Lock.acquire()  # 请求并行锁
++        phspList.extend(self.Loop(i * MAXBuffer + 1, (i + 1) * MAXBuffer, ptype))
++        Lock.release()  # 释放并行锁
++        # 并行模块 结束
++
+     def TotalLoop(self, ptype='ope+-'):
+         LoopNum = math.ceil(self.TotalNumParticles / self.MAXBuffer)
+         # self.EnergyFluence.reset()
+@@ -229,17 +238,31 @@
+         NPHOTPHSP = 0
+         global phspList
+         phspList = []
++
++        threads = []
++        # #并行模块 开始
++        # threading.Lock().acquire()  #请求并行锁
++        #
+         for i in range(LoopNum):
+             #phspList = self.Loop(i * self.MAXBuffer + 1, (i + 1) * self.MAXBuffer, ptype)
+-            phspList.extend(self.Loop(i * self.MAXBuffer + 1, (i + 1) * self.MAXBuffer, ptype))
+-            targetevents = targetevents + len(phspList)
++            exec('Thread_'+ str(i)+ ' = threading.Thread(target = self.ThreadLoop, args=(phspList, self.MAXBuffer, ptype, i))')
++            eval('threads.append(Thread_'+str(i)+')')
++
++        for t in threads:
++            t.setDaemon(True)
++            t.start()
++        t.join()
++            #targetevents = targetevents + len(phspList)
+             #pNum = self.show(phspList, ptype, pNum, i, printout=False)
++        #
++        # threading.Lock().release()  #释放并行锁
++        # #并行模块 结束
+         # self.EnergyFluence.show()
+         self.stopTime = datetime.now()
+         # self.PriEnergyMap.Show()
+         # self.SecEnergyMap.Show()
+         # self.ThiEnergyMap.Show()
+-        print("Total target particles:{:8d}".format(targetevents))
++        #rint("Total target particles:{:8d}".format(targetevents))
+         print("Total time: {:d} seconds".format((self.stopTime-self.startTime).seconds))
+         return phspList
+ 
+@@ -386,5 +409,7 @@
+         path_header = R"D:\Data_fhc\EGSnrc\EGS_10_NoDBS_pri\EGS.IAEAheader"
+         ph = Phsp(path_phsp, path_header)
+         ph.TotalLoop()
++        # thread_1 = threading.Thread(target = ph.TotalLoop())
++        # thread_2 = threading.Thread(target = ph.TotalLoop())
+         ph.TranserEPID(phspList)
+         ph.SavePhsp(phspList)
